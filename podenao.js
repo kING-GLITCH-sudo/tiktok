@@ -1,247 +1,222 @@
-// podenao.js - Proteção contra inspeção e clonagem (Versão Corrigida)
+// podenao.js - Proteção Ultra Agressiva (Versão 2.0)
 (function() {
     'use strict';
     
-    // Configurações de proteção
+    // Configurações
     const config = {
-        maxInspectAttempts: 3,
+        maxAttempts: 2,
         redirectUrl: 'https://www.google.com',
-        delayBeforeRedirect: 100,
-        allowDevTools: false,
-        showWarnings: true
+        aggressiveMode: true,
+        debugMode: false
     };
     
-    let inspectAttempts = 0;
-    let isProtectionActive = true;
+    let attempts = 0;
+    let devToolsOpen = false;
+    let protectionActive = true;
     
-    // Função para redirecionar
-    function redirectToGoogle() {
-        if (inspectAttempts >= config.maxInspectAttempts && isProtectionActive) {
-            if (config.showWarnings) {
-                alert('Acesso negado! Redirecionando...');
-            }
+    // Função de redirecionamento imediato
+    function forceRedirect(reason) {
+        if (!protectionActive) return;
+        
+        attempts++;
+        
+        if (config.debugMode) {
+            console.warn(`PROTEÇÃO ATIVADA: ${reason} (${attempts}/${config.maxAttempts})`);
+        }
+        
+        if (attempts >= config.maxAttempts) {
+            // Múltiplas tentativas de redirecionamento para garantir
+            window.location.href = config.redirectUrl;
+            window.location.replace(config.redirectUrl);
+            window.open(config.redirectUrl, '_self');
+            
+            // Backup: limpa a página se redirecionamento falhar
             setTimeout(() => {
-                window.location.replace(config.redirectUrl);
-            }, config.delayBeforeRedirect);
+                document.head.innerHTML = '';
+                document.body.innerHTML = '<h1 style="color:red;text-align:center;margin-top:50vh;">ACESSO NEGADO</h1>';
+            }, 100);
+            
+            // Para toda execução de JavaScript
+            throw new Error('Access Denied');
         }
     }
     
-    // Função para incrementar tentativas
-    function incrementAttempts(reason) {
-        inspectAttempts++;
-        console.warn(`Tentativa de inspeção detectada: ${reason}. Tentativas: ${inspectAttempts}/${config.maxInspectAttempts}`);
-        redirectToGoogle();
-    }
-    
-    // Bloqueia clique direito
-    document.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        incrementAttempts('Menu de contexto');
-        return false;
-    }, false);
-    
-    // Detecta teclas de atalho para inspeção - CORRIGIDO
+    // === PROTEÇÃO CONTRA F12 E ATALHOS ===
     document.addEventListener('keydown', function(e) {
-        // F12
-        if (e.keyCode === 123 || e.key === 'F12') {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('F12');
-            return false;
-        }
+        const forbidden = [
+            e.key === 'F12',
+            e.keyCode === 123,
+            (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.keyCode === 73)),
+            (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.keyCode === 74)),
+            (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.keyCode === 67)),
+            (e.ctrlKey && (e.key === 'u' || e.key === 'U' || e.keyCode === 85)),
+            (e.ctrlKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83)),
+            (e.ctrlKey && e.shiftKey && (e.key === 'K' || e.keyCode === 75))
+        ];
         
-        // Ctrl+Shift+I (Inspector)
-        if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.key === 'I')) {
+        if (forbidden.some(condition => condition)) {
             e.preventDefault();
+            e.stopImmediatePropagation();
             e.stopPropagation();
-            incrementAttempts('Ctrl+Shift+I');
-            return false;
-        }
-        
-        // Ctrl+Shift+J (Console)
-        if (e.ctrlKey && e.shiftKey && (e.keyCode === 74 || e.key === 'J')) {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('Ctrl+Shift+J');
-            return false;
-        }
-        
-        // Ctrl+Shift+C (Inspect Element)
-        if (e.ctrlKey && e.shiftKey && (e.keyCode === 67 || e.key === 'C')) {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('Ctrl+Shift+C');
-            return false;
-        }
-        
-        // Ctrl+U (View Source)
-        if (e.ctrlKey && (e.keyCode === 85 || e.key === 'u' || e.key === 'U')) {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('Ctrl+U');
-            return false;
-        }
-        
-        // Ctrl+S (Save)
-        if (e.ctrlKey && (e.keyCode === 83 || e.key === 's' || e.key === 'S')) {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('Ctrl+S');
-            return false;
-        }
-        
-        // Ctrl+A (Select All) - limitado
-        if (e.ctrlKey && (e.keyCode === 65 || e.key === 'a' || e.key === 'A')) {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('Ctrl+A');
+            forceRedirect(`Tecla proibida: ${e.key || e.keyCode}`);
             return false;
         }
     }, true);
     
-    // Detecta abertura do DevTools - MELHORADO
-    if (!config.allowDevTools) {
-        // Método 1: Console.log trick
-        let devtools = {
-            open: false,
-            orientation: null
-        };
-        
-        const threshold = 160;
-        
-        setInterval(() => {
-            if (window.outerHeight - window.innerHeight > threshold || 
-                window.outerWidth - window.innerWidth > threshold) {
-                if (!devtools.open) {
-                    devtools.open = true;
-                    incrementAttempts('DevTools detectado');
-                }
-            } else {
-                devtools.open = false;
-            }
-        }, 100);
-        
-        // Método 2: Console debugging trick
-        let element = new Image();
-        Object.defineProperty(element, 'id', {
-            get: function() {
-                incrementAttempts('Console debugging');
-                return 'devtools-detector';
-            }
-        });
-        console.log(element);
-    }
+    // === PROTEÇÃO CONTRA CLIQUE DIREITO ===
+    document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        forceRedirect('Menu de contexto');
+        return false;
+    }, true);
     
-    // Proteção contra clonagem
-    const antiClone = {
-        detectTools: function() {
-            const userAgent = navigator.userAgent.toLowerCase();
-            const suspicious = [
-                'cyotek', 'httrack', 'wget', 'curl', 'scrapy', 
-                'phantomjs', 'selenium', 'webdriver', 'chrome-headless'
-            ];
-            
-            for (let tool of suspicious) {
-                if (userAgent.includes(tool)) {
-                    return true;
-                }
-            }
-            
-            // Detecta headless Chrome
-            if (navigator.webdriver) {
-                return true;
-            }
-            
-            return false;
-        },
+    // === DETECÇÃO ULTRA AGRESSIVA DE DEVTOOLS ===
+    
+    // Método 1: Monitoramento de dimensões em tempo real
+    let lastInnerWidth = window.innerWidth;
+    let lastInnerHeight = window.innerHeight;
+    
+    setInterval(() => {
+        const widthDiff = window.outerWidth - window.innerWidth;
+        const heightDiff = window.outerHeight - window.innerHeight;
         
-        blockSuspicious: function() {
-            if (this.detectTools()) {
-                incrementAttempts('Ferramenta de clonagem detectada');
-                document.body.innerHTML = '<h1>Acesso Negado</h1>';
-                document.body.style.display = 'none';
-                return true;
+        if (widthDiff > 200 || heightDiff > 200) {
+            if (!devToolsOpen) {
+                devToolsOpen = true;
+                forceRedirect('DevTools - Dimensões');
             }
-            return false;
+        } else {
+            devToolsOpen = false;
         }
-    };
+        
+        // Detecta mudanças bruscas na janela (indicando dock/undock do DevTools)
+        const currentWidth = window.innerWidth;
+        const currentHeight = window.innerHeight;
+        
+        if (Math.abs(currentWidth - lastInnerWidth) > 100 || 
+            Math.abs(currentHeight - lastInnerHeight) > 100) {
+            forceRedirect('DevTools - Redimensionamento suspeito');
+        }
+        
+        lastInnerWidth = currentWidth;
+        lastInnerHeight = currentHeight;
+    }, 50); // Verificação muito frequente
     
-    // Executa verificação de clonagem
-    if (antiClone.blockSuspicious()) {
-        return; // Para a execução se detectar ferramentas suspeitas
-    }
-    
-    // Proteção contra seleção excessiva
-    let selectionCount = 0;
-    document.addEventListener('selectstart', function(e) {
-        selectionCount++;
-        if (selectionCount > 5) {
-            e.preventDefault();
-            e.stopPropagation();
-            incrementAttempts('Seleção excessiva');
-            return false;
+    // Método 2: Console.log timing attack
+    let start = performance.now();
+    let element = new Image();
+    Object.defineProperty(element, 'id', {
+        get: function() {
+            let end = performance.now();
+            if (end - start > 100) { // Se demorou muito, console está aberto
+                forceRedirect('Console timing attack');
+            }
+            start = performance.now();
+            return 'console-detector';
         }
     });
+    
+    setInterval(() => {
+        console.clear();
+        console.log(element);
+    }, 1000);
+    
+    // Método 3: Detecção via toString override
+    let devtools = /./;
+    devtools.toString = function() {
+        forceRedirect('Console toString override');
+        return 'DevTools detectado!';
+    };
+    
+    console.log('%c ', devtools);
+    
+    // Método 4: Firebug detection
+    setInterval(() => {
+        if (typeof console.profile === 'function') {
+            console.profile();
+            console.profileEnd();
+            if (console.clear) {
+                console.clear();
+            }
+            forceRedirect('Profiler detectado');
+        }
+    }, 2000);
+    
+    // === PROTEÇÃO CONTRA AUTOMAÇÃO E BOTS ===
+    
+    // Detecta WebDriver
+    if (navigator.webdriver) {
+        forceRedirect('WebDriver detectado');
+    }
+    
+    // Detecta Selenium e outras ferramentas
+    const suspiciousProps = [
+        'webdriver',
+        '__webdriver_script_fn',
+        '__selenium_unwrapped',
+        '__fxdriver_unwrapped',
+        '_Selenium_IDE_Recorder',
+        'callSelenium',
+        '_selenium',
+        'calledSelenium',
+        '$cdc_asdjflasutopfhvcZLmcfl_',
+        '$chrome_asyncScriptInfo',
+        '__$webdriverAsyncExecutor'
+    ];
+    
+    suspiciousProps.forEach(prop => {
+        if (window[prop] || document[prop]) {
+            forceRedirect(`Automação detectada: ${prop}`);
+        }
+    });
+    
+    // Detecta headless browsers
+    if (!window.outerWidth || !window.outerHeight) {
+        forceRedirect('Navegador headless detectado');
+    }
+    
+    // === PROTEÇÕES ADICIONAIS ===
+    
+    // Bloqueia seleção de texto
+    document.addEventListener('selectstart', function(e) {
+        e.preventDefault();
+        forceRedirect('Tentativa de seleção');
+        return false;
+    }, true);
     
     // Bloqueia drag and drop
     document.addEventListener('dragstart', function(e) {
         e.preventDefault();
-        e.stopPropagation();
-        incrementAttempts('Tentativa de drag and drop');
+        forceRedirect('Tentativa de drag');
         return false;
-    });
+    }, true);
     
-    // Detecta impressão
+    // Bloqueia impressão
     window.addEventListener('beforeprint', function(e) {
         e.preventDefault();
-        incrementAttempts('Tentativa de impressão');
+        forceRedirect('Tentativa de impressão');
         return false;
-    });
+    }, true);
     
-    // Bloqueia save as
-    window.addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.shiftKey && e.keyCode === 83) { // Ctrl+Shift+S
-            e.preventDefault();
-            incrementAttempts('Save As');
-            return false;
-        }
-    });
-    
-    // Reset de contadores
-    let lastActivity = Date.now();
-    
-    function resetAttempts() {
-        if (Date.now() - lastActivity > 60000) { // 1 minuto
-            inspectAttempts = Math.max(0, inspectAttempts - 1);
-        }
-        lastActivity = Date.now();
-    }
-    
-    // Atividades que resetam parcialmente o contador
-    document.addEventListener('click', resetAttempts);
-    document.addEventListener('scroll', resetAttempts);
-    
-    // Limpa contador de seleção
+    // Detecta abertura de nova janela/aba (possível view-source)
+    let windowCount = 1;
     setInterval(() => {
-        selectionCount = Math.max(0, selectionCount - 1);
-    }, 2000);
+        if (window.length !== windowCount) {
+            forceRedirect('Nova janela detectada');
+        }
+    }, 500);
     
-    // Proteção contra desabilitação do JavaScript
-    Object.defineProperty(window, 'isProtectionActive', {
-        value: true,
-        writable: false,
-        configurable: false
-    });
+    // === OFUSCAÇÃO E ANTI-TAMPERING ===
     
-    // Monitor de modificação do DOM para detectar tentativas de remoção
+    // Detecta modificação do DOM (tentativa de remover proteção)
     const observer = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) {
             if (mutation.type === 'childList') {
                 mutation.removedNodes.forEach(function(node) {
-                    if (node.tagName === 'SCRIPT' && node.textContent && 
-                        node.textContent.includes('podenao')) {
-                        incrementAttempts('Tentativa de remoção do script');
+                    if (node.nodeType === Node.ELEMENT_NODE && 
+                        (node.tagName === 'SCRIPT' || node.innerHTML.includes('podenao'))) {
+                        forceRedirect('Tentativa de remoção de proteção');
                     }
                 });
             }
@@ -250,18 +225,89 @@
     
     observer.observe(document, {
         childList: true,
-        subtree: true
+        subtree: true,
+        attributes: true,
+        characterData: true
     });
     
-    // Ofusca o console
+    // Protege contra desabilitação
+    Object.defineProperty(window, 'protectionActive', {
+        value: true,
+        writable: false,
+        configurable: false
+    });
+    
+    // Override de funções perigosas
+    const originalConsole = console;
+    Object.defineProperty(window, 'console', {
+        get: function() {
+            forceRedirect('Acesso ao console interceptado');
+            return originalConsole;
+        },
+        set: function() {
+            forceRedirect('Tentativa de modificar console');
+        }
+    });
+    
+    // Detecta tentativas de debug via breakpoints
+    setInterval(() => {
+        const before = performance.now();
+        debugger;
+        const after = performance.now();
+        if (after - before > 100) {
+            forceRedirect('Debugger detectado');
+        }
+    }, 3000);
+    
+    // === LIMPEZA E WARNINGS ===
+    
+    // Limpa console e mostra warning
     if (typeof console !== 'undefined') {
-        console.clear();
-        console.log('%cSTOP!', 'color: red; font-size: 50px; font-weight: bold;');
-        console.log('%cEsta é uma função do navegador destinada a desenvolvedores. Se alguém lhe disse para copiar e colar algo aqui, é provável que seja uma tentativa de comprometer sua segurança.', 'color: red; font-size: 14px;');
+        try {
+            console.clear();
+            console.log('%cSTOP! ÁREA RESTRITA!', 'color: red; font-size: 30px; font-weight: bold; text-shadow: 2px 2px 4px #000;');
+            console.log('%cEste site está protegido contra inspeção.', 'color: orange; font-size: 16px; font-weight: bold;');
+            console.log('%cQualquer tentativa de acesso não autorizado será registrada.', 'color: red; font-size: 14px;');
+        } catch(e) {
+            // Console pode estar bloqueado
+        }
     }
     
-    // Log de ativação
-    console.log('%cProteção podenao.js ATIVADA', 'color: green; font-weight: bold;');
-    console.log('Tentativas permitidas:', config.maxInspectAttempts);
+    // Disabilita algumas funcionalidades do navegador
+    if (config.aggressiveMode) {
+        // Disabilita reload
+        window.addEventListener('beforeunload', function(e) {
+            e.preventDefault();
+            return 'Saída não autorizada';
+        });
+        
+        // Bloqueia Ctrl+R e F5
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey && (e.key === 'r' || e.key === 'R')) || 
+                e.key === 'F5' || e.keyCode === 116) {
+                e.preventDefault();
+                forceRedirect('Tentativa de reload');
+                return false;
+            }
+        }, true);
+    }
+    
+    // Log de ativação (apenas se debug ativado)
+    if (config.debugMode) {
+        console.log('%c[PODENAO] Proteção Ultra Ativada!', 'color: green; font-weight: bold;');
+    }
+    
+    // Auto-execução de verificações
+    setInterval(() => {
+        // Verifica se ainda está na mesma página
+        if (window.location.hostname !== window.location.hostname) {
+            forceRedirect('Mudança de hostname detectada');
+        }
+        
+        // Re-aplica proteções caso tenham sido removidas
+        if (!protectionActive) {
+            forceRedirect('Proteção foi desativada');
+        }
+    }, 1000);
     
 })();
